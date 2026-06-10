@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>최적화 버전 - 데이터 기반 밸런스 식단</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        }
+
+        body {
+            background-color: #f4f7f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+            padding: 40px;
+            width: 100%;
+            max-width: 520px;
+            text-align: center;
+        }
+
+        .sdg-badge {
+            display: inline-block;
+            background-color: #4C9F38;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 6px 14px;
+            border-radius: 20px;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: 800;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+
+        .status-panel {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 25px;
+            font-size: 13px;
+            color: #64748b;
+            font-weight: 600;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #cbd5e1;
+            border-radius: 50%;
+            transition: background-color 0.3s;
+        }
+
+        .recommend-box {
+            background-color: #fafbfc;
+            border: 2px dashed #e2e8f0;
+            border-radius: 18px;
+            padding: 35px 20px;
+            margin-bottom: 25px;
+            min-height: 220px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .food-name {
+            font-size: 21px;
+            font-weight: bold;
+            color: #1a202c;
+            margin-bottom: 10px;
+        }
+
+        .food-desc {
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+
+        .nutrition-info {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 5px;
+        }
+
+        .nutri-tag {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .btn-recommend {
+            background-color: #4C9F38;
+            color: white;
+            border: none;
+            padding: 16px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 14px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+            box-shadow: 0 5px 15px rgba(76, 159, 56, 0.2);
+        }
+
+        .btn-recommend:disabled {
+            background-color: #cbd5e1;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="sdg-badge">GOAL 3. 건강과 복지</div>
+        <h1>데이터 기반 밸런스 식단</h1>
+        <p class="subtitle">맛없는 식단 대신, 대용량 CSV를 초고속으로<br>분석하여 유동적인 타협 식단을 제안합니다.</p>
+
+        <div class="status-panel">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusTxt">CSV 데이터 로딩 중...</span>
+        </div>
+
+        <div class="recommend-box" id="recommendBox">
+            <div class="food-name" id="displayTitle">데이터 준비 중</div>
+            <div class="food-desc" id="displayDesc">정밀 최적화된 파서가 데이터를 읽어오고 있습니다.</div>
+            <div class="nutrition-info" id="displayNutrition"></div>
+        </div>
+
+        <button class="btn-recommend" id="recommendBtn" onclick="pickRandomMenu()" disabled>맛있는 건강식 추천받기</button>
+    </div>
+
+    <script>
+        // 최적화된 고속 CSV 파서 함수 (정규식 미사용, 성능 극대화)
+        function parseCSV(text) {
+            const lines = [];
+            let row = [""];
+            let inQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                const c = text[i];
+                const next = text[i+1];
+
+                if (c === '"') {
+                    if (inQuotes && next === '"') { row[row.length - 1] += '"'; i++; }
+                    else { inQuotes = !inQuotes; }
+                } else if (c === ',' && !inQuotes) {
+                    row.push('');
+                } else if ((c === '' || c === '
+') && !inQuotes) {
+                    if (c === '' && next === '
+') { i++; }
+                    lines.push(row);
+                    row = [''];
+                } else {
+                    row[row.length - 1] += c;
+                }
+            }
+            if (row.length > 1 || row[0] !== '') lines.push(row);
+            return lines;
+        }
+
+        let filteredMenus = [];
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            const startTime = performance.now();
+            
+            fetch('dishes.csv')
+                .then(response => {
+                    if (!response.ok) throw new Error('파일 로드 실패');
+                    return response.text();
+                })
+                .then(csvText => {
+                    processOptimizedData(csvText, startTime);
+                })
+                .catch(error => {
+                    console.error(error);
+                    updateStatus('#e53e3e', '파일 접근 불가 (VS Code Live Server 필수)');
+                    document.getElementById('displayTitle').innerText = "서버 환경 확인 필요";
+                    document.getElementById('displayDesc').innerText = "보안(CORS) 정책으로 인해 그냥 파일을 열면 읽어올 수 없습니다. 반드시 Live Server를 통해 실행해 주세요.";
+                });
+        });
+
+        function updateStatus(color, message) {
+            document.getElementById('statusDot').style.backgroundColor = color;
+            document.getElementById('statusTxt').innerText = message;
+        }
+
+        function processOptimizedData(csvText, startTime) {
+            const rows = parseCSV(csvText);
+            if (rows.length < 2) return;
+
+            const headers = rows[0].map(h => h.trim().toLowerCase());
+            const idxName = headers.indexOf('name');
+            const idxDesc = headers.indexOf('description');
+            const idxKcal = headers.indexOf('calories');
+            const idxProtein = headers.indexOf('protein');
+
+            const validMenus = [];
+            const tastyKeywords = ['chicken', 'burger', 'omelet', 'beef', 'steak', 'pasta', 'bake', 'rice', 'cheese', 'tasty', 'pizza', 'sandwich'];
+
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.length <= Math.max(idxName, idxKcal, idxProtein)) continue;
+
+                const name = row[idxName]?.trim();
+                if (!name) continue;
+
+                const kcal = parseFloat(row[idxKcal]);
+                const protein = parseFloat(row[idxProtein]);
+
+                if (isNaN(kcal) || isNaN(protein)) continue;
+
+                const isHealthy = (kcal >= 300 && kcal <= 650) && (protein >= 15);
+                if (!isHealthy) continue;
+
+                const lowerName = name.toLowerCase();
+                const isTasty = tastyKeywords.some(keyword => lowerName.includes(keyword));
+
+                if (isTasty) {
+                    const desc = row[idxDesc]?.trim() || "데이터 기반으로 엄선된 영양 만점의 든든한 일상식 메뉴입니다.";
+                    validMenus.push({ name, desc, kcal, protein });
+                }
+            }
+
+            filteredMenus = validMenus;
+            const endTime = performance.now();
+            const processTime = ((endTime - startTime) / 1000).toFixed(2);
+
+            if (filteredMenus.length > 0) {
+                updateStatus('#4C9F38', `분석 완료 (${processTime}초) | ${filteredMenus.length}개 대기 중`);
+                document.getElementById('recommendBtn').disabled = false;
+                document.getElementById('displayTitle').innerText = "준비 완료!";
+                document.getElementById('displayDesc').innerText = "최적화 필터링이 완료되었습니다. 버튼을 누르면 즉시 랜덤 식단이 표출됩니다.";
+            } else {
+                updateStatus('#dd6b20', "조건에 부합하는 메뉴가 존재하지 않습니다.");
+            }
+        }
+
+        function pickRandomMenu() {
+            if (filteredMenus.length === 0) return;
+
+            const randomIndex = Math.floor(Math.random() * filteredMenus.length);
+            const selected = filteredMenus[randomIndex];
+
+            document.getElementById('displayTitle').innerText = selected.name;
+            document.getElementById('displayDesc').innerText = selected.desc;
+            
+            document.getElementById('displayNutrition').innerHTML = `
+                <span class="nutri-tag" style="background-color: #ffeef0; color: #e53e3e;">🔥 ${selected.kcal} kcal</span>
+                <span class="nutri-tag" style="background-color: #ebf8ff; color: #2b6cb0;">💪 단백질 ${selected.protein}g</span>
+            `;
+
+            const box = document.getElementById('recommendBox');
+            box.style.borderColor = '#4C9F38';
+            box.style.background = '#fcfdfc';
+        }
+    </script>
+</body>
+</html>
