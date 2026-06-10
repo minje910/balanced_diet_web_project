@@ -179,10 +179,8 @@
                     else { inQuotes = !inQuotes; }
                 } else if (c === ',' && !inQuotes) {
                     row.push('');
-                } else if ((c === '' || c === '
-') && !inQuotes) {
-                    if (c === '' && next === '
-') { i++; }
+                } else if ((c === '\r' || c === '\n') && !inQuotes) {
+                    if (c === '\r' && next === '\n') { i++; }
                     lines.push(row);
                     row = [''];
                 } else {
