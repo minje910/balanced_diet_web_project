@@ -121,6 +121,41 @@
             font-weight: 600;
         }
 
+        .desc-origin {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #a0aec0;
+            cursor: pointer;
+            text-decoration: underline;
+            user-select: none;
+        }
+        .desc-origin-text {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #94a3b8;
+            font-style: italic;
+            line-height: 1.5;
+        }
+
+        .action-links {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+        .action-link {
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 9px 14px;
+            border-radius: 10px;
+            transition: transform 0.15s, opacity 0.15s;
+        }
+        .action-link:hover { transform: translateY(-1px); opacity: 0.88; }
+        .action-link.recipe { background-color: #fff4e6; color: #dd6b20; }
+        .action-link.place  { background-color: #e6f4ea; color: #2f855a; }
+
         .btn-recommend {
             background-color: #4C9F38;
             color: white;
@@ -158,6 +193,7 @@
             <div class="food-name" id="displayTitle">데이터 준비 중</div>
             <div class="food-desc" id="displayDesc">정밀 최적화된 파서가 데이터를 읽어오고 있습니다.</div>
             <div class="nutrition-info" id="displayNutrition"></div>
+            <div class="action-links" id="displayLinks"></div>
         </div>
 
         <button class="btn-recommend" id="recommendBtn" onclick="pickRandomMenu()" disabled>맛있는 건강식 추천받기</button>
@@ -226,6 +262,7 @@
             const idxDesc = headers.indexOf('description');
             const idxKcal = headers.indexOf('calories');
             const idxProtein = headers.indexOf('protein');
+            const idxSlug = headers.indexOf('slug');
 
             const validMenus = [];
             const tastyKeywords = ['chicken', 'burger', 'omelet', 'beef', 'steak', 'pasta', 'bake', 'rice', 'cheese', 'tasty', 'pizza', 'sandwich'];
@@ -249,8 +286,9 @@
                 const isTasty = tastyKeywords.some(keyword => lowerName.includes(keyword));
 
                 if (isTasty) {
-                    const desc = row[idxDesc]?.trim() || "데이터 기반으로 엄선된 영양 만점의 든든한 일상식 메뉴입니다.";
-                    validMenus.push({ name, desc, kcal, protein });
+                    const desc = row[idxDesc]?.trim() || "";
+                    const slug = idxSlug >= 0 ? (row[idxSlug]?.trim() || "") : "";
+                    validMenus.push({ name, desc, slug, kcal, protein });
                 }
             }
 
@@ -268,23 +306,113 @@
             }
         }
 
-        function pickRandomMenu() {
+        // 사용자 위치 1회 캐싱 (음식점 검색용)
+        let userCoords = null;
+        let geoAsked = false;
+        function ensureGeo() {
+            if (geoAsked || !navigator.geolocation) return Promise.resolve(null);
+            geoAsked = true;
+            return new Promise(resolve => {
+                navigator.geolocation.getCurrentPosition(
+                    pos => { userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude }; resolve(userCoords); },
+                    () => resolve(null),
+                    { timeout: 6000, maximumAge: 600000 }
+                );
+            });
+        }
+
+        // 영어 설명 -> 한국어 번역 (무료 엔드포인트, 실패 시 폴백)
+        async function translateToKorean(text) {
+            if (!text) return '';
+            try {
+                const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + encodeURIComponent(text);
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('google');
+                const data = await res.json();
+                const out = (data[0] || []).map(seg => seg[0]).join('').trim();
+                if (out) return out;
+                throw new Error('empty');
+            } catch (e) {
+                try {
+                    const res = await fetch('https://api.mymemory.translated.net/get?langpair=en|ko&q=' + encodeURIComponent(text.slice(0, 480)));
+                    const data = await res.json();
+                    return (data.responseData && data.responseData.translatedText) || '';
+                } catch (_) {
+                    return '';
+                }
+            }
+        }
+
+        let pickToken = 0;
+        async function pickRandomMenu() {
             if (filteredMenus.length === 0) return;
 
+            const myToken = ++pickToken; // 빠른 연속 클릭 시 이전 번역 결과가 덮어쓰지 않도록
             const randomIndex = Math.floor(Math.random() * filteredMenus.length);
             const selected = filteredMenus[randomIndex];
 
             document.getElementById('displayTitle').innerText = selected.name;
-            document.getElementById('displayDesc').innerText = selected.desc;
-            
+
+            const FALLBACK_DESC = '데이터 기반으로 엄선된 영양 만점의 든든한 일상식 메뉴입니다.';
+            const descEl = document.getElementById('displayDesc');
+            descEl.innerText = selected.desc ? '설명 번역 중...' : FALLBACK_DESC;
+
             document.getElementById('displayNutrition').innerHTML = `
                 <span class="nutri-tag" style="background-color: #ffeef0; color: #e53e3e;">🔥 ${selected.kcal} kcal</span>
                 <span class="nutri-tag" style="background-color: #ebf8ff; color: #2b6cb0;">💪 단백질 ${selected.protein}g</span>
             `;
 
+            // 링크 영역: ① 조리법  ② 주변 음식점
+            const linksEl = document.getElementById('displayLinks');
+            const recipeUrl = selected.slug
+                ? 'https://tasty.co/recipe/' + selected.slug
+                : 'https://www.google.com/search?q=' + encodeURIComponent(selected.name + ' recipe');
+            linksEl.innerHTML =
+                `<a class="action-link recipe" href="${recipeUrl}" target="_blank" rel="noopener">📖 조리법 보기</a>`;
+
+            ensureGeo().then(coords => {
+                if (myToken !== pickToken) return;
+                const q = encodeURIComponent(selected.name + ' 식당');
+                const mapUrl = coords
+                    ? `https://www.google.com/maps/search/${q}/@${coords.lat},${coords.lng},12z`
+                    : `https://www.google.com/maps/search/?api=1&query=${q}`;
+                const a = document.createElement('a');
+                a.className = 'action-link place';
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.href = mapUrl;
+                a.innerText = coords ? '📍 주변 음식점 찾기' : '📍 음식점 검색 (위치 미허용)';
+                linksEl.appendChild(a);
+            });
+
             const box = document.getElementById('recommendBox');
             box.style.borderColor = '#4C9F38';
             box.style.background = '#fcfdfc';
+
+            // 설명 번역 (기본 한국어 출력 + 원문 토글)
+            if (!selected.desc) return; // 원본 설명이 없으면 기본 문구 그대로 (번역 불필요)
+            const ko = await translateToKorean(selected.desc);
+            if (myToken !== pickToken) return; // 그 사이 다른 추천을 누른 경우 무시
+            if (ko && ko !== selected.desc) {
+                descEl.innerHTML =
+                    `<span>${escapeHtml(ko)}</span>` +
+                    `<div class="desc-origin" onclick="toggleOrigin(this)">원문 보기</div>` +
+                    `<div class="desc-origin-text" style="display:none;">${escapeHtml(selected.desc)}</div>`;
+            } else {
+                descEl.innerText = selected.desc; // 번역 실패 시 원문 그대로
+            }
+        }
+
+        function toggleOrigin(el) {
+            const box = el.nextElementSibling;
+            const open = box.style.display !== 'none';
+            box.style.display = open ? 'none' : 'block';
+            el.innerText = open ? '원문 보기' : '원문 숨기기';
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
     </script>
 </body>
